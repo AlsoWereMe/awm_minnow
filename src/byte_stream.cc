@@ -12,25 +12,27 @@ bool Writer::is_closed() const
 void Writer::push(string data)
 {
     (void)data;
-    Writer wt = writer();
-    if ((!wt.is_closed()) && data.length() <= wt.available_capacity())
-    {
-        wt.buffer_.insert(wt.buffer_.end(), data.begin(), data.end());
-        wt.pushed_bytes_ += data.length();
-        return;
-    }
-    wt.set_error();
-    return;
+    // Get the size we will write.
+    uint64_t size = available_capacity() >= data.length() 
+                  ? data.length() 
+                  : available_capacity();
+    // Get the real string we insert to.
+    std::string str = data.substr(0, size);
+
+    // Insert str to the buffer.
+    buffer_.insert(buffer_.end(), str.begin(), str.end());
+    // Record the bytes already pushed.
+    pushed_bytes_ += size;
 }
 
 void Writer::close()
 {
-    writer().close_ = true;
+    close_ = true;
 }
 
 uint64_t Writer::available_capacity() const
 {
-    return writer().capacity_ - writer().buffer_.size();
+    return capacity_ - buffer_.size();
 }
 
 uint64_t Writer::bytes_pushed() const
@@ -40,25 +42,36 @@ uint64_t Writer::bytes_pushed() const
 
 bool Reader::is_finished() const
 {
-    return reader().close_ || reader().buffer_.empty();
+    return close_ && buffer_.empty();
 }
 
 uint64_t Reader::bytes_popped() const
 {
-    return reader().poped_bytes_;
+    return poped_bytes_;
 }
 
 string_view Reader::peek() const
-{
-    return {};
+{     
+    return  string_view(&buffer_[0], 1);
 }
 
 void Reader::pop(uint64_t len)
 {
     (void)len;
+    // Get the size we will pop.
+    uint64_t size = buffer_.size() >= len 
+                  ? len
+                  : buffer_.size();
+    // Pop elements.
+    for (uint64_t i = 0; i < size; i++)
+    {
+        buffer_.erase(buffer_.begin());
+        poped_bytes_ += 1;
+    }
+    
 }
 
 uint64_t Reader::bytes_buffered() const
 {
-    return reader().buffer_.size();
+    return buffer_.size();
 }
