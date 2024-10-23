@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
-#include <vector>
+#include <deque>
 
 class Reader;
 class Writer;
@@ -28,7 +28,7 @@ protected:
   bool error_ = false;
   
   bool close_ = false;            // Flag indicate that if stream close.
-  std::vector<char> buffer_ = {}; // Buffer store data.
+  std::deque<char> buffer_ = {};  // Buffer store data.
   uint64_t pushed_bytes_ = 0;     // Total number of bytes cumulatively pushed to the stream.
   uint64_t poped_bytes_ = 0;      // Total number of bytes cumulatively popped from stream.
 };

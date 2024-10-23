@@ -63,9 +63,11 @@ void Reader::pop(uint64_t len)
                   ? len
                   : buffer_.size();
     // Pop elements.
+    // Most of time spend on "read",
+        // so there should use a structure which can give us O(1) time complexity to pop elements.
     for (uint64_t i = 0; i < size; i++)
     {
-        buffer_.erase(buffer_.begin());
+        buffer_.pop_front();
         poped_bytes_ += 1;
     }
     
