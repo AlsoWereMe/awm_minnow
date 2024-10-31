@@ -1,6 +1,7 @@
 #pragma once
 
 #include "byte_stream.hh"
+#include <map>
 
 class Reassembler
 {
@@ -41,5 +42,10 @@ public:
   const Writer& writer() const { return output_.writer(); }
 
 private:
-  ByteStream output_; // the Reassembler writes to this ByteStream
+  ByteStream output_;                        // the Reassembler writes to this ByteStream.
+  void push_assembled_str( Writer& output ); // push the substring is already assembled.
+  std::map<size_t, std::string> unassembled_substrings_ = {};
+  bool get_eof_ = false;
+  uint64_t eof_index_ = 0;
+  uint64_t next_byte_index_ = 0;
 };
