@@ -34,6 +34,15 @@ public:
   // How many bytes are stored in the Reassembler itself?
   uint64_t bytes_pending() const;
 
+  // Return next byte index.
+  uint64_t ackno() const { return next_byte_index_; }
+
+  // Return the output stream;
+  ByteStream output() const { return output_; }
+  
+  // Return if the assembler is empty.
+  bool empty() const { return unassembled_substrings_.size() == 0; }
+
   // Access output stream reader
   Reader& reader() { return output_.reader(); }
   const Reader& reader() const { return output_.reader(); }

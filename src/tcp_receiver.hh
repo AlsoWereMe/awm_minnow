@@ -3,6 +3,7 @@
 #include "reassembler.hh"
 #include "tcp_receiver_message.hh"
 #include "tcp_sender_message.hh"
+#include "wrapping_integers.hh"
 
 class TCPReceiver
 {
@@ -26,5 +27,8 @@ public:
   const Writer& writer() const { return reassembler_.writer(); }
 
 private:
+  bool syn_received_ = false;
+  bool fin_received_ = false;
+  Wrap32 isn_ = Wrap32 { 0 };
   Reassembler reassembler_;
 };

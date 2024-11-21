@@ -24,73 +24,91 @@ void Reassembler::push_assembled_str( Writer& writer )
   }
 }
 
-void Reassembler::insert( uint64_t first_index, std::string data, bool is_last_substring )
-{
-  Writer& writer = output_.writer();
+void Reassembler::insert(uint64_t first_index, std::string data, bool is_last_substring) {
+    Writer &writer = output_.writer();
 
-  // Just return when writer is closed.
-  if ( writer.is_closed() ) {
-    return;
-  }
-
-  // Close the writer when the last substring is empty.
-  if ( data.empty() && is_last_substring ) {
-    writer.close();
-    return;
-  } else if ( data.empty() ) {
-    return;
-  }
-
-  uint64_t data_end_index = first_index + data.size();
-  uint64_t available_capacity = writer.available_capacity();
-
-  if ( available_capacity == 0 ) {
-    return;
-  }
-
-  // Drop the whole substring when it had written already.
-  if ( data_end_index <= next_byte_index_ ) {
-    return;
-  }
-
-  // Keep the non overlapping part of substring if there is overlap.
-  if ( first_index < next_byte_index_ ) {
-    // In this situation, first index will be replaced with the number of pushed bytes.
-    // And data will be replaced with the non overlapping substring.
-    data = data.substr( next_byte_index_ - first_index );
-    first_index = next_byte_index_;
-  }
-
-  // The size from the first index to the max capacity is the really free capacity the current substring can use.
-  uint64_t free_capacity = available_capacity - ( first_index - next_byte_index_ );
-  // In same, the really written length "pushed_length" is the minimun value between the length of data and free
-  // capacity.
-  uint64_t pushed_length = std::min( data.size(), free_capacity );
-  data = data.substr( 0, pushed_length );
-
-  // Now there are two situation, equal or greater.
-  if ( first_index == next_byte_index_ ) {
-    writer.push( data );
-    next_byte_index_ = writer.bytes_pushed();
-    push_assembled_str( writer );
-  } else {
-    auto it = unassembled_substrings_.find( first_index );
-    if ( it == unassembled_substrings_.end() || it->second.size() < data.size() ) {
-      // Remerber use move so that can transmitt the value but not the pointer.
-      unassembled_substrings_[first_index] = std::move( data );
+    if (writer.is_closed()) {
+        return;
     }
-  }
 
-  // Save the EOF index for close writer.
-  if ( is_last_substring ) {
-    eof_index_ = data_end_index;
-    get_eof_ = true;
-  }
+    uint64_t data_end_index = first_index + data.size();
 
-  if ( get_eof_ && writer.bytes_pushed() == eof_index_ ) {
-    writer.close();
-  }
+    // **记录 EOF 信息**
+    if (is_last_substring) {
+        eof_index_ = data_end_index;
+        get_eof_ = true;
+    }
+
+    // **处理空数据**
+    if (data.empty()) {
+        // 检查是否需要关闭输出流
+        if (get_eof_ && writer.bytes_pushed() == eof_index_) {
+            writer.close();
+        }
+        return;
+    }
+
+    // **处理已经写入的数据**
+    if (data_end_index <= next_byte_index_) {
+        // 检查是否需要关闭输出流
+        if (get_eof_ && writer.bytes_pushed() == eof_index_) {
+            writer.close();
+        }
+        return;
+    }
+
+    // **修剪已经写入的部分**
+    if (first_index < next_byte_index_) {
+        data = data.substr(next_byte_index_ - first_index);
+        first_index = next_byte_index_;
+    }
+
+    // **计算可用容量**
+    uint64_t available_capacity = writer.available_capacity();
+
+    if (available_capacity == 0) {
+        // 检查是否需要关闭输出流
+        if (get_eof_ && writer.bytes_pushed() == eof_index_) {
+            writer.close();
+        }
+        return;
+    }
+
+    // **计算可以插入的数据长度**
+    uint64_t max_insert_size = available_capacity - (first_index - next_byte_index_);
+
+    if (max_insert_size == 0) {
+        // 检查是否需要关闭输出流
+        if (get_eof_ && writer.bytes_pushed() == eof_index_) {
+            writer.close();
+        }
+        return;
+    }
+
+    if (data.size() > max_insert_size) {
+        data = data.substr(0, max_insert_size);
+        data_end_index = first_index + data.size();
+    }
+
+    // **插入数据**
+    if (first_index == next_byte_index_) {
+        writer.push(data);
+        next_byte_index_ = writer.bytes_pushed();
+        push_assembled_str(writer);
+    } else {
+        // 保存未能立即写入的数据
+        auto it = unassembled_substrings_.find(first_index);
+        if (it == unassembled_substrings_.end() || it->second.size() < data.size()) {
+            unassembled_substrings_[first_index] = std::move(data);
+        }
+    }
+
+    // **检查是否需要关闭输出流**
+    if (get_eof_ && writer.bytes_pushed() == eof_index_) {
+        writer.close();
+    }
 }
+
 
 uint64_t Reassembler::bytes_pending() const
 {
