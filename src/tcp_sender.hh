@@ -15,24 +15,26 @@ class TCPSender
 {
 public:
   /* Construct TCP sender with given default Retransmission Timeout and possible ISN */
-  TCPSender( ByteStream&& input, Wrap32 isn, uint64_t initial_RTO_ms )
-    : input_( std::move( input ) ), isn_( isn ), initial_RTO_ms_( initial_RTO_ms )
+  TCPSender(ByteStream&& input, Wrap32 isn, uint64_t initial_RTO_ms)
+      : input_(std::move(input)), isn_(isn), initial_RTO_ms_(initial_RTO_ms), 
+        RTO_(initial_RTO_ms_), next_seqno_(0), retrans_times_(0), has_send_SYN(false), 
+        has_send_FIN(false), window_size_(1), segments(), alarm({false, 0, 0})
   {}
 
   /* Generate an empty TCPSenderMessage */
   TCPSenderMessage make_empty_message() const;
 
   /* Receive and process a TCPReceiverMessage from the peer's receiver */
-  void receive( const TCPReceiverMessage& msg );
+  void receive(const TCPReceiverMessage& msg);
 
   /* Type of the `transmit` function that the push and tick methods can use to send messages */
-  using TransmitFunction = std::function<void( const TCPSenderMessage& )>;
+  using TransmitFunction = std::function<void(const TCPSenderMessage&)>;
 
   /* Push bytes from the outbound stream */
-  void push( const TransmitFunction& transmit );
+  void push(const TransmitFunction& transmit);
 
   /* Time has passed by the given # of milliseconds since the last time the tick() method was called */
-  void tick( uint64_t ms_since_last_tick, const TransmitFunction& transmit );
+  void tick(uint64_t ms_since_last_tick, const TransmitFunction& transmit);
 
   // Accessors
   uint64_t sequence_numbers_in_flight() const;  // How many sequence numbers are outstanding?
@@ -48,4 +50,17 @@ private:
   ByteStream input_;
   Wrap32 isn_;
   uint64_t initial_RTO_ms_;
+  uint64_t RTO_;
+  uint64_t next_seqno_;
+  uint64_t retrans_times_;
+  bool has_send_SYN;
+  bool has_send_FIN;
+  uint64_t window_size_;
+  std::list<TCPSenderMessage> segments;
+  
+  struct retransmission_timer {
+    bool has_on;
+    uint64_t t;
+    uint64_t expire_time;
+  } alarm;
 };

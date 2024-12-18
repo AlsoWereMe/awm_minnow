@@ -1,130 +1,151 @@
 #include "reassembler.hh"
-
 using namespace std;
 
-void Reassembler::push_assembled_str( Writer& writer )
+
+void Reassembler::update(substring &st)
 {
-  auto it = unassembled_substrings_.begin();
-  while ( it != unassembled_substrings_.end() ) {
-    uint64_t index = it->first;
-    std::string& data = it->second;
-    // Map defaultly sort itself by key so just break the loop when the begin index is greater than next_byte_index.
-    if ( index > next_byte_index_ ) {
+  // since we will handler overlap every time,
+  // we assume overlaping substrings dont exist.
+
+  // 1.find the pos and insert.
+  list<substring>::iterator it = substrings.begin();
+  list<substring>::iterator backit = substrings.begin();
+  list<substring>::iterator fowdit = substrings.begin();
+
+  for(; it != substrings.end(); it++)
+    if((*it).first_byte >= st.first_byte)
       break;
+  it = substrings.insert(it, st);
+
+  // 2.check the substring before pos.
+  if(it != substrings.begin()){
+    backit = it;
+    backit --;
+
+    substring t = (*backit);
+    // case 1: st totally inside the substring. delete the st.
+    if((*backit).first_byte + (*backit).data.size() >= st.first_byte + st.data.size()){
+      substrings.erase(it);
+      goto push;
     }
-    uint64_t overlap = next_byte_index_ - index;
-    if ( overlap < data.size() ) {
-      writer.push( data.substr( overlap ) );
+
+    // case 2: st overlap part of it. edit the substring.
+    if((*backit).first_byte + (*backit).data.size() < st.first_byte + st.data.size()){
+      (*backit).data = (*backit).data.substr(0, st.first_byte - (*backit).first_byte);
     }
-    next_byte_index_ = writer.bytes_pushed();
-    it = unassembled_substrings_.erase( it );
+
+    // case 3: no overlap. do nothing.
   }
-  if ( writer.bytes_pushed() == eof_index_ ) {
-    writer.close();
+
+
+  // 3.check the substring after pos.
+  if(it == substrings.end())
+    goto push;
+
+  fowdit = it;
+  fowdit++;
+  for(; fowdit != substrings.end();){
+    // case 1: no overlap. 
+    if((*fowdit).first_byte >= st.first_byte + st.data.size())
+      break;
+
+    // case 2: st totally inside the substring. delete the st.
+    if((*fowdit).first_byte == st.first_byte && (*fowdit).data.size() >= st.data.size()){
+      substrings.erase(it);
+      goto push;
+    }
+
+    // case 3: substring totally inside the st. delete the substring.
+    if((*fowdit).first_byte + (*fowdit).data.size() <= st.first_byte + st.data.size()){
+      fowdit = substrings.erase(fowdit);
+      continue;
+    }
+
+    // case 4: st overlap part of it. edit the substring.
+    if((*fowdit).first_byte + (*fowdit).data.size() > st.first_byte + st.data.size()){
+      (*fowdit).data = (*fowdit).data.substr(st.first_byte + st.data.size() - (*fowdit).first_byte);
+      (*fowdit).first_byte = st.first_byte + st.data.size();
+    }
+    fowdit++;
   }
+
+push:
+  // 4.scan the list and push possible substrings
+  substring t;
+  while(!substrings.empty()){
+    t = substrings.front();
+
+    if(t.first_byte == next_byte){
+      output_.writer().push(t.data);
+      next_byte += t.data.size();
+      substrings.pop_front();
+    } else 
+      break;
+  }
+
+  if(t.first_byte + t.data.size() == finish_index && substrings.empty()){
+    output_.writer().close();
+  }
+
+  return;
 }
 
-void Reassembler::insert(uint64_t first_index, std::string data, bool is_last_substring) {
-    Writer &writer = output_.writer();
+void Reassembler::insert( uint64_t first_index, string data, bool is_last_substring )
+{
+  // pack it up.
+  substring st;
+  st.first_byte = first_index;
+  st.is_last_substring = is_last_substring;
+  st.data = data;
 
-    if (writer.is_closed()) {
-        return;
-    }
+  // get the finish byte index
+  if(st.is_last_substring){
+    finish_index = first_index + data.size();
+  }
+  // if the substring totally outside the available area, discarded.
+  if(first_index + data.size() < next_byte || first_index >= unaccept_index()){
+    return;
+  }
 
-    uint64_t data_end_index = first_index + data.size();
+  // if no space for substring, discarded.
+  if(next_byte == unaccept_index())
+    return;
 
-    // **记录 EOF 信息**
-    if (is_last_substring) {
-        eof_index_ = data_end_index;
-        get_eof_ = true;
-    }
+  // if the substring have bytes outside the available area, cut it.
+  // case 1: head outbound.
+  if(st.first_byte < next_byte){
+    st.data = st.data.substr(next_byte - st.first_byte);
+    st.first_byte = next_byte;
+  }
 
-    // **处理空数据**
-    if (data.empty()) {
-        // 检查是否需要关闭输出流
-        if (get_eof_ && writer.bytes_pushed() == eof_index_) {
-            writer.close();
-        }
-        return;
-    }
+  // case 2: tail outside.
+  if(st.first_byte + st.data.size() > unaccept_index()){
+    st.data = st.data.substr(0, unaccept_index() - st.first_byte);
+    st.is_last_substring = false;
+  }
 
-    // **处理已经写入的数据**
-    if (data_end_index <= next_byte_index_) {
-        // 检查是否需要关闭输出流
-        if (get_eof_ && writer.bytes_pushed() == eof_index_) {
-            writer.close();
-        }
-        return;
-    }
+  // finish process, push into the list.
+  update(st);
 
-    // **修剪已经写入的部分**
-    if (first_index < next_byte_index_) {
-        data = data.substr(next_byte_index_ - first_index);
-        first_index = next_byte_index_;
-    }
-
-    // **计算可用容量**
-    uint64_t available_capacity = writer.available_capacity();
-
-    if (available_capacity == 0) {
-        // 检查是否需要关闭输出流
-        if (get_eof_ && writer.bytes_pushed() == eof_index_) {
-            writer.close();
-        }
-        return;
-    }
-
-    // **计算可以插入的数据长度**
-    uint64_t max_insert_size = available_capacity - (first_index - next_byte_index_);
-
-    if (max_insert_size == 0) {
-        // 检查是否需要关闭输出流
-        if (get_eof_ && writer.bytes_pushed() == eof_index_) {
-            writer.close();
-        }
-        return;
-    }
-
-    if (data.size() > max_insert_size) {
-        data = data.substr(0, max_insert_size);
-        data_end_index = first_index + data.size();
-    }
-
-    // **插入数据**
-    if (first_index == next_byte_index_) {
-        writer.push(data);
-        next_byte_index_ = writer.bytes_pushed();
-        push_assembled_str(writer);
-    } else {
-        // 保存未能立即写入的数据
-        auto it = unassembled_substrings_.find(first_index);
-        if (it == unassembled_substrings_.end() || it->second.size() < data.size()) {
-            unassembled_substrings_[first_index] = std::move(data);
-        }
-    }
-
-    // **检查是否需要关闭输出流**
-    if (get_eof_ && writer.bytes_pushed() == eof_index_) {
-        writer.close();
-    }
+  return;
 }
-
 
 uint64_t Reassembler::bytes_pending() const
 {
-  uint64_t cnt = 0;
-  uint64_t next_expected = next_byte_index_;
-
-  for ( const auto& [index, data] : unassembled_substrings_ ) {
-    if ( index >= next_expected ) {
-      // For the non overlapping string, add its total length.
-      cnt += data.length();
-    } else if ( index + data.length() > next_expected ) {
-      // For the overlapping string, add its non overlapping length.
-      cnt += data.length() - ( next_expected - index );
-    }
-    // Maintaining expected index.
-    next_expected = std::max( next_expected, index + data.length() );
+  uint64_t used_bytes = 0;
+  for(substring i: substrings){
+    used_bytes += i.data.size();
   }
-  return cnt;
+  return used_bytes;
+}
+
+
+uint64_t Reassembler::unpopped_index()
+{
+  return output_.writer().bytes_pushed();
+}
+
+uint64_t Reassembler::unaccept_index()
+{
+  return next_byte + output_.writer().available_capacity();
 }

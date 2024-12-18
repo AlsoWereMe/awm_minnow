@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <deque>
 #include <string>
 #include <string_view>
 
@@ -19,20 +18,17 @@ public:
   Writer& writer();
   const Writer& writer() const;
 
-  void set_error() { error_ = true; };            // Signal that the stream suffered an error.
-  bool has_error() const { return error_; };      // Has the stream had an error?
-  uint64_t capacity() const { return capacity_; } // The maximum size of ByteStream.
-  uint64_t buffer_size() const { return buffer_.size(); }
+  void set_error() { error_ = true; };       // Signal that the stream suffered an error.
+  bool has_error() const { return error_; }; // Has the stream had an error?
 
 protected:
   // Please add any additional state to the ByteStream here, and not to the Writer and Reader interfaces.
-  uint64_t capacity_ = 0;
-  bool error_ = false;
-
-  bool close_ = false;           // Flag indicate that if stream close.
-  std::deque<char> buffer_ = {}; // Buffer store data.
-  uint64_t pushed_bytes_ = 0;    // Total number of bytes cumulatively pushed to the stream.
-  uint64_t poped_bytes_ = 0;     // Total number of bytes cumulatively popped from stream.
+  std::string buffer_{};
+  uint64_t capacity_;
+  uint64_t bytes_pushed_{};
+  uint64_t bytes_popped_{};
+  bool error_ {};
+  bool closed_{};
 };
 
 class Writer : public ByteStream
